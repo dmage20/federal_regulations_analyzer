@@ -1,0 +1,187 @@
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <header class="bg-white shadow-sm">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight text-gray-900">Federal Regulation Analyzer</h1>
+          <p class="mt-2 text-sm text-gray-600">
+            Real-time analytics on federal agency regulations
+          </p>
+        </div>
+        <%= link_to "System Health", system_health_path, class: "text-sm font-semibold leading-6 text-gray-900 hover:text-gray-600" %>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <!-- Key Metrics -->
+    <section class="mb-8">
+      <h2 class="sr-only">Key Metrics</h2>
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Total Agencies -->
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+          <div class="px-4 py-5 sm:p-6">
+            <dt class="text-sm font-medium text-gray-500 truncate">Total Agencies</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+              <%= number_with_delimiter(@total_agencies) %>
+            </dd>
+            <dd class="mt-1 text-xs text-gray-500">
+              <%= @agencies_with_data %> with data
+            </dd>
+          </div>
+        </div>
+
+        <!-- Total Regulations -->
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+          <div class="px-4 py-5 sm:p-6">
+            <dt class="text-sm font-medium text-gray-500 truncate">Total Regulations</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+              <%= number_with_delimiter(@total_regulations) %>
+            </dd>
+            <% if @total_snapshots %>
+              <dd class="mt-1 text-xs text-gray-500">
+                <%= number_with_delimiter(@total_snapshots) %> snapshots tracked
+              </dd>
+            <% end %>
+          </div>
+        </div>
+
+        <!-- Total Words -->
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+          <div class="px-4 py-5 sm:p-6">
+            <dt class="text-sm font-medium text-gray-500 truncate">Total Words</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+              <%= number_to_human(@total_words, precision: 2, format: "%n%u",
+                  units: { thousand: "K", million: "M", billion: "B" }) %>
+            </dd>
+            <dd class="mt-1 text-xs text-gray-500">
+              Across all regulations
+            </dd>
+          </div>
+        </div>
+
+        <!-- Average Words per Agency -->
+        <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+          <div class="px-4 py-5 sm:p-6">
+            <dt class="text-sm font-medium text-gray-500 truncate">Avg Words/Agency</dt>
+            <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
+              <% avg = @agencies_with_data > 0 ? @total_words / @agencies_with_data : 0 %>
+              <%= number_to_human(avg, precision: 2, format: "%n%u",
+                  units: { thousand: "K", million: "M", billion: "B" }) %>
+            </dd>
+            <dd class="mt-1 text-xs text-gray-500">
+              For agencies with data
+            </dd>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chart Section -->
+    <% if @top_agencies_chart_data.any? %>
+      <section class="mb-8 overflow-hidden bg-white shadow-sm sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <h2 class="mb-4 text-lg font-medium leading-6 text-gray-900">
+            Top <%= @top_agencies_chart_data.count %> Agencies by Total Word Count
+          </h2>
+          <div class="min-h-[400px]">
+            <%= column_chart @top_agencies_chart_data,
+                             height: "400px",
+                             colors: ["#4F46E5"],
+                             library: { responsive: true, maintainAspectRatio: false } %>
+          </div>
+        </div>
+      </section>
+    <% end %>
+
+    <!-- Agency Table with Word Count and Checksum -->
+    <section class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
+      <div class="border-b border-gray-200 bg-white px-4 py-5 sm:px-6">
+        <h2 class="text-lg font-medium leading-6 text-gray-900">Agency Details</h2>
+        <p class="mt-1 text-sm text-gray-500">
+          Word counts and checksums for all federal agencies
+        </p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-300">
+          <thead class="bg-gray-50">
+            <tr>
+              <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                Agency
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Acronym
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 min-w-[300px]">
+                Titles
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-right text-sm font-semibold text-gray-900">
+                Regulations
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-right text-sm font-semibold text-gray-900">
+                Total Words
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-right text-sm font-semibold text-gray-900">
+                Restrictions
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Checksum
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Last Synced
+              </th>
+            </tr>
+          </thead>
+          <tbody id="agencies_list" class="divide-y divide-gray-200 bg-white">
+            <%= render @agencies %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Historical Change Analytics (if available) -->
+    <% if @most_changed_regulations %>
+      <section class="mt-8 overflow-hidden bg-white shadow-sm sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <h2 class="mb-4 text-lg font-medium leading-6 text-gray-900">
+            Most Frequently Changed Regulations
+          </h2>
+          <p class="mb-4 text-sm text-gray-600">
+            Regulations with the most changes detected over time based on content checksum analysis
+          </p>
+          <div class="space-y-3">
+            <% @most_changed_regulations.each do |regulation| %>
+              <div class="flex items-center justify-between border-l-4 border-indigo-500 bg-gray-50 px-4 py-3">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">
+                    <%= regulation.identifier %>
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    <%= regulation.label %>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-semibold text-indigo-600">
+                    <%= regulation.change_count %>
+                  </div>
+                  <div class="text-xs text-gray-500">changes</div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    <% end %>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-12 bg-white border-t border-gray-200">
+    <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <p class="text-center text-sm text-gray-500">
+        Federal Regulation Analyzer • Data sourced from eCFR API • Last updated <%= Time.current.strftime("%B %d, %Y") %>
+      </p>
+    </div>
+  </footer>
+</div>

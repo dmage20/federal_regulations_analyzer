@@ -1,0 +1,141 @@
+#!/usr/bin/env ruby
+# MCP Server for eCFR Analytics
+# Enables AI agents to query federal regulation statistics
+
+require_relative "../config/environment"
+require "json"
+
+def handle_request(request)
+  case request["method"]
+  when "initialize"
+    { jsonrpc: "2.0", id: request["id"], result: {
+      protocolVersion: "2024-11-05",
+      serverInfo: { name: "ecfr-analyzer", version: "1.0.0" },
+      capabilities: { tools: {} }
+    }}
+
+  when "tools/list"
+    { jsonrpc: "2.0", id: request["id"], result: { tools: [
+      {
+        name: "get_agency_stats",
+        description: "Get regulation statistics for a federal agency by acronym (EPA, FDA, DOD, etc.)",
+        inputSchema: {
+          type: "object",
+          properties: { acronym: { type: "string", description: "Agency acronym" } },
+          required: ["acronym"]
+        }
+      },
+      {
+        name: "list_agencies",
+        description: "List all federal agencies ranked by total regulatory word count",
+        inputSchema: {
+          type: "object",
+          properties: { limit: { type: "number", description: "Max agencies (default: 20)" } }
+        }
+      },
+      {
+        name: "search_regulations",
+        description: "Search regulations by CFR title and part number",
+        inputSchema: {
+          type: "object",
+          properties: {
+            title: { type: "number", description: "CFR title number (e.g., 40)" },
+            part: { type: "number", description: "CFR part number (optional)" }
+          },
+          required: ["title"]
+        }
+      }
+    ]}}
+
+  when "tools/call"
+    tool = request.dig("params", "name")
+    args = request.dig("params", "arguments") || {}
+
+    result = case tool
+      when "get_agency_stats" then get_agency_stats(args["acronym"])
+      when "list_agencies" then list_agencies(args["limit"] || 20)
+      when "search_regulations" then search_regulations(args["title"], args["part"])
+      else { error: "Unknown tool: #{tool}" }
+    end
+
+    { jsonrpc: "2.0", id: request["id"], result: {
+      content: [{ type: "text", text: JSON.pretty_generate(result) }]
+    }}
+
+  else
+    { jsonrpc: "2.0", id: request["id"], error: {
+      code: -32601, message: "Method not found: #{request["method"]}"
+    }}
+  end
+end
+
+def get_agency_stats(acronym)
+  agency = Agency.find_by(acronym: acronym&.upcase)
+  return { error: "Agency '#{acronym}' not found" } unless agency
+
+  {
+    name: agency.name,
+    acronym: agency.acronym,
+    total_words: agency.total_word_count,
+    total_regulations: agency.regulations_count,
+    checksum: agency.content_checksum,
+    total_restrictions: agency.total_restrictions_count,
+    restrictions_methodology: "Count of binding constraints (shall, must, may not, prohibited, required) in regulation text",
+    last_synced: agency.last_synced_at&.iso8601,
+    avg_words_per_regulation: agency.regulations_count > 0 ?
+      (agency.total_word_count / agency.regulations_count).round : 0
+  }
+end
+
+def list_agencies(limit)
+  agencies = Agency.where("regulations_count > 0")
+    .order(total_word_count: :desc)
+    .limit(limit)
+
+  {
+    total_with_data: Agency.where("regulations_count > 0").count,
+    agencies: agencies.map { |a| {
+      acronym: a.acronym,
+      name: a.name,
+      total_words: a.total_word_count,
+      regulations: a.regulations_count
+    }}
+  }
+end
+
+def search_regulations(title, part = nil)
+  query = Regulation.where(cfr_title: title)
+  query = query.where(part: part) if part
+  regs = query.includes(:agency).limit(50)
+
+  return { error: "No regulations found for #{title} CFR #{part}" } if regs.empty?
+
+  {
+    cfr_title: title,
+    part: part,
+    count: regs.count,
+    regulations: regs.map { |r| {
+      citation: r.citation,
+      agency: r.agency.acronym,
+      word_count: r.word_count,
+      label: r.label
+    }}
+  }
+end
+
+# Main stdio loop
+STDERR.puts "eCFR Analytics MCP Server running (stdio transport)"
+
+$stdin.each_line do |line|
+  begin
+    request = JSON.parse(line.strip)
+    response = handle_request(request)
+    puts JSON.generate(response)
+    $stdout.flush
+  rescue JSON::ParserError => e
+    STDERR.puts "JSON parse error: #{e.message}"
+  rescue => e
+    STDERR.puts "Error: #{e.message}"
+    STDERR.puts e.backtrace.first(3).join("\n")
+  end
+end

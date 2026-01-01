@@ -1,0 +1,25 @@
+databases:
+  - name: ecfr_analyzer_db
+    databaseName: ecfr_analyzer_production
+    user: ecfr_analyzer
+    plan: free # 90 day expiry check
+
+services:
+  - type: web
+    name: ecfr-analyzer
+    runtime: docker
+    plan: free
+    envVars:
+      - key: RAILS_MASTER_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ecfr_analyzer_db
+          property: connectionString
+      - key: RAILS_LOG_TO_STDOUT
+        value: "true"
+      - key: RAILS_SERVE_STATIC_FILES
+        value: "true"
+    startCommand: ./bin/start-production
+    
+# Allow for auto-deploy from main branch

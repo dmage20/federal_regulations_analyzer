@@ -1,0 +1,47 @@
+<tr id="agency_<%= agency.id %>">
+  <td class="py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+    <%= agency.name %>
+  </td>
+  <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+    <span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+      <%= agency.acronym %>
+    </span>
+  </td>
+  <td class="px-3 py-4 text-sm text-gray-500">
+    <div class="flex flex-nowrap gap-2 overflow-x-auto max-w-[400px] pb-1">
+      <% agency.cfr_references.each do |ref| %>
+        <% link_data = ecfr_link_helper(ref) %>
+        <a href="<%= link_data[:url] %>" target="_blank" class="inline-flex whitespace-nowrap items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 hover:bg-blue-100 transition-colors">
+          <%= link_data[:label] %>
+        </a>
+      <% end %>
+    </div>
+  </td>
+  <td class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-500">
+    <span class="font-medium"><%= number_with_delimiter(agency.regulations_count) %></span>
+  </td>
+  <td class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-900 font-semibold">
+    <%= number_to_human(agency.total_word_count, precision: 2, format: "%n%u",
+        units: { thousand: "K", million: "M", billion: "B" }) %>
+  </td>
+  <td class="whitespace-nowrap px-3 py-4 text-right text-sm text-gray-900">
+    <%= number_with_delimiter(agency.total_restrictions_count) %>
+  </td>
+  <td class="px-3 py-4 text-sm text-gray-500 font-mono">
+    <% if agency.content_checksum.present? %>
+      <span class="inline-flex items-center rounded bg-blue-50 px-2 py-1 text-xs text-blue-700"
+            title="<%= agency.content_checksum %>">
+        <%= agency.content_checksum[0..7] %>...
+      </span>
+    <% else %>
+      <span class="text-gray-400">—</span>
+    <% end %>
+  </td>
+  <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+    <% if agency.last_synced_at %>
+      <%= time_ago_in_words(agency.last_synced_at) %> ago
+    <% else %>
+      <span class="text-gray-400">Never</span>
+    <% end %>
+  </td>
+</tr>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Federal Regulation Analyzer" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="description" content="Analyze federal agencies and their regulatory complexity with comprehensive metrics and insights.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Federal Regulation Analyzer">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#4F46E5">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= yield :head %>
+
+    <%# Performance hints %>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+
+    <%# App icons %>
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%# Stylesheets %>
+    <%= stylesheet_link_tag :app %>
+
+    <%# JavaScript - Chartkick requires both Chart.js and chartkick.js %>
+    <%= javascript_include_tag "https://cdn.jsdelivr.net/npm/chart.js" %>
+    <%= javascript_include_tag "https://cdn.jsdelivr.net/npm/chartkick@5/dist/chartkick.min.js" %>
+  </head>
+
+  <body class="bg-gray-50 antialiased">
+    <% flash.each do |type, message| %>
+      <div class="rounded-md <%= type == 'notice' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700' %> p-4 mb-4 mx-auto max-w-7xl mt-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <% if type == 'notice' %>
+              <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+            <% else %>
+              <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+              </svg>
+            <% end %>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm font-medium"><%= message %></p>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <%= yield %>
+  </body>
+</html>

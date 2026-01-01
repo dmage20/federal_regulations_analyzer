@@ -1,0 +1,10 @@
+#!/bin/bash -e
+
+# Ensure database is ready
+./bin/rails db:prepare
+
+# Start Solid Queue (Background Jobs) in background
+./bin/jobs &
+
+# Start Web Server (Foreground)
+exec ./bin/thrust ./bin/rails server

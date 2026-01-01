@@ -1,0 +1,87 @@
+# Name of your application. Used to uniquely configure containers.
+service: ecfr-analyzer
+
+# Name of the container image
+image: ecfr-analyzer
+
+# Deploy to these servers.
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("DEPLOY_HOST", "192.168.0.1") %>
+    labels:
+      traefik.http.routers.ecfr.rule: Host(`<%= ENV.fetch("APP_DOMAIN", "ecfr.example.com") %>`)
+    options:
+      network: "private"
+  job:
+    hosts:
+      - <%= ENV.fetch("DEPLOY_HOST", "192.168.0.1") %>
+    cmd: bin/jobs
+
+# Enable SSL auto certification via Let's Encrypt
+proxy:
+  ssl: true
+  host: <%= ENV.fetch("APP_DOMAIN", "ecfr.example.com") %>
+  healthcheck:
+    path: /up
+    interval: 20
+
+# Container registry
+registry:
+  server: ghcr.io
+  username:
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Environment variables
+env:
+  secret:
+    - RAILS_MASTER_KEY
+    - ECFR_ANALYZER_DATABASE_PASSWORD
+    - SENTRY_DSN
+  clear:
+    RAILS_ENV: production
+    RAILS_LOG_TO_STDOUT: true
+    RAILS_SERVE_STATIC_FILES: true
+    SOLID_QUEUE_IN_PUMA: false
+    JOB_CONCURRENCY: 2
+    WEB_CONCURRENCY: 2
+    DB_HOST: ecfr-analyzer-db
+
+# Kamal aliases
+aliases:
+  console: app exec --interactive --reuse "bin/rails console"
+  shell: app exec --interactive --reuse "bash"
+  logs: app logs -f
+  dbc: app exec --interactive --reuse "bin/rails dbconsole --include-password"
+
+# Persistent storage
+volumes:
+  - "ecfr_analyzer_storage:/rails/storage"
+
+# Asset bridging for zero-downtime deploys
+asset_path: /rails/public/assets
+
+# Image builder configuration
+builder:
+  arch: amd64
+  args:
+    RUBY_VERSION: 3.3.6
+
+# Accessory services
+accessories:
+  db:
+    image: postgres:16
+    host: <%= ENV.fetch("DEPLOY_HOST", "192.168.0.1") %>
+    port: "127.0.0.1:5432:5432"
+    env:
+      secret:
+        - POSTGRES_PASSWORD
+      clear:
+        POSTGRES_USER: ecfr_analyzer
+        POSTGRES_DB: ecfr_analyzer_production
+    directories:
+      - data:/var/lib/postgresql/data
+
+

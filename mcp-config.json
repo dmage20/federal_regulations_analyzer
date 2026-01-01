@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ecfr-analyzer": {
+      "command": "ruby",
+      "args": [
+        "/Users/danielmage/usds_takehome/ecfr-analyzer/bin/mcp-server"
+      ],
+      "env": {
+        "RAILS_ENV": "development"
+      }
+    }
+  }
+}

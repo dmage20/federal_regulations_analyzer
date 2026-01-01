@@ -1,0 +1,25 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  agency: one
+  cfr_title: 1
+  part: MyString
+  section: MyString
+  content: MyText
+  word_count: 1
+  last_amended_on: 2025-12-20
+  version_hash: MyString
+  hierarchy_depth: 1
+  cross_reference_count: 1
+
+two:
+  agency: two
+  cfr_title: 1
+  part: MyString
+  section: MyString
+  content: MyText
+  word_count: 1
+  last_amended_on: 2025-12-20
+  version_hash: MyString
+  hierarchy_depth: 1
+  cross_reference_count: 1

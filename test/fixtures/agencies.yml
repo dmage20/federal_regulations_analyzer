@@ -1,0 +1,17 @@
+# Read about fixtures at https://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  name: MyString
+  acronym: MyString
+  description: MyText
+  total_word_count: 
+  content_checksum: MyString
+  last_synced_at: 2025-12-20 23:47:48
+
+two:
+  name: MyString
+  acronym: MyString
+  description: MyText
+  total_word_count: 
+  content_checksum: MyString
+  last_synced_at: 2025-12-20 23:47:48

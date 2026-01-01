@@ -134,7 +134,7 @@ class EcfrClient
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.open_timeout = 10
-    http.read_timeout = 60
+    http.read_timeout = 300 # Title 40 (EPA) can take > 60s to generate
 
     request = Net::HTTP::Get.new(uri)
     response = http.request(request)

@@ -3,8 +3,8 @@
 # Ensure database is ready
 ./bin/rails db:prepare
 
-# Start Solid Queue (Background Jobs) in background
-./bin/jobs &
+# Run Solid Queue INSIDE Puma to save memory (One Rails Process)
+export SOLID_QUEUE_IN_PUMA="true"
 
 # Start Web Server (Foreground)
 exec ./bin/thrust ./bin/rails server

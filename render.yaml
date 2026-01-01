@@ -20,6 +20,5 @@ services:
         value: "true"
       - key: RAILS_SERVE_STATIC_FILES
         value: "true"
-    startCommand: ./bin/start-production
     
 # Allow for auto-deploy from main branch

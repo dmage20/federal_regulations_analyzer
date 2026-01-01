@@ -76,9 +76,14 @@ class DashboardController < ApplicationController
     # Cache the status for 2 minutes to prevent hammering the API
     # and slowing down the dashboard on every page load.
     Rails.cache.fetch("system_health/api_status", expires_in: 2.minutes) do
-      if EcfrClient.new.check_connection
-        :online
-      else
+      begin
+        if EcfrClient.new.check_connection
+          :online
+        else
+          :offline
+        end
+      rescue StandardError => e
+        Rails.logger.error("API Check Failed: #{e.message}")
         :offline
       end
     end

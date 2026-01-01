@@ -6,5 +6,8 @@
 # Run Solid Queue INSIDE Puma to save memory (One Rails Process)
 export SOLID_QUEUE_IN_PUMA="true"
 
+# EMERGENCY: Clear stuck jobs to prevent crash loop on boot
+./bin/rails runner bin/clear_jobs.rb
+
 # Start Web Server (Foreground)
 exec ./bin/thrust ./bin/rails server

@@ -58,7 +58,41 @@ class EcfrClient
     end
   end
 
-  # ... (get_latest_version_date remains same)
+  # Get the latest available version date for a title
+  def get_latest_version_date(title)
+    cache_key = "ecfr/latest_date/title-#{title}"
+
+    Rails.cache.fetch(cache_key, expires_in: 1.hour) do
+      fallback_date = (Date.today - 60.days).strftime("%Y-%m-%d")
+      begin
+        url = "#{BASE_URL}/versioner/v1/versions/title-#{title}.json"
+        response = get_with_retry(url)
+        data = JSON.parse(response)
+        data.dig("available_on")&.max || fallback_date
+      rescue => e
+        Rails.logger.warn("Could not fetch latest version date: #{e.message}")
+        fallback_date
+      end
+    end
+  end
+
+  def parse_agencies_response(body)
+    data = JSON.parse(body)
+    (data.dig("agencies") || []).map do |agency|
+      cfr_refs = agency["cfr_references"] || []
+      title_numbers = cfr_refs.map { |ref| ref["title"] }.compact.uniq
+
+      {
+        name: agency["name"],
+        acronym: agency["short_name"].presence || extract_acronym(agency["name"]),
+        description: agency["description"],
+        cfr_titles: title_numbers,
+        cfr_references: cfr_refs
+      }
+    end
+  rescue JSON::ParserError
+    []
+  end
 
   private
 

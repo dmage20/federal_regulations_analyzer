@@ -103,12 +103,22 @@ class EcfrClient
           case node.name
           when "DIV5"
             if node.attribute("TYPE") == "PART"
+
+              # YIELD THE PREVIOUS PART if it exists
+              if current_part
+                if block_given?
+                  yield current_part
+                  current_part = nil # Free memory
+                else
+                  parts << current_part
+                end
+              end
+
               current_part = {
                 part_number: node.attribute("N"),
                 identifier: "Part #{node.attribute("N")}",
                 content: "" # We will accumulate text content here
               }
-              parts << current_part
             end
           when "HEAD"
              if current_part && current_part[:label].nil?
@@ -131,6 +141,15 @@ class EcfrClient
           if node.name == "P"
             capture_text = false
           end
+        end
+      end
+
+      # Yield/Save the last part
+      if current_part
+        if block_given?
+          yield current_part
+        else
+          parts << current_part
         end
       end
     end

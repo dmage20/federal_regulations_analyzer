@@ -44,16 +44,22 @@ class SyncAgencyJob < ApplicationJob
   end
 
   def sync_title(agency, title, sync_log)
-    data = EcfrClient.new.fetch_regulations(title)
-    return unless data[:parts]
+    # Stream the XML file download
+    EcfrClient.new.fetch_regulations(title) do |file_path|
+      # Parse the file from disk, processing one part at a time using streaming
+      EcfrClient.new.parse_xml_file(file_path) do |part_data|
+          process_parts(agency, title, [ part_data ], sync_log)
+      end
+    end
+  rescue => e
+    Rails.logger.error("Error syncing title #{title}: #{e.message}")
+  end
 
+  def process_parts(agency, title, parts, sync_log)
     allowed_refs = agency.cfr_references.select { |r| r["title"].to_s == title.to_s }
-
-    # Check if there are any specific assignment rules (Chapter or Subtitle)
-    # If a reference has neither (just title), it implies the whole title is allowed.
     has_specific_filters = allowed_refs.any? { |r| r["chapter"].present? || r["subtitle"].present? }
 
-    data[:parts].each do |part_data|
+    parts.each do |part_data|
       # Filter by chapter/subtitle if agency has specific assignments
       if has_specific_filters
         # A part is allowed if it matches ANY of the allowed references
@@ -99,8 +105,6 @@ class SyncAgencyJob < ApplicationJob
 
       sync_log.increment!(:records_processed)
     end
-  rescue => e
-    Rails.logger.error("Error syncing title #{title}: #{e.message}")
   end
 
   def create_snapshot(reg, count)

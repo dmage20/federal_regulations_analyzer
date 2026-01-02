@@ -41,18 +41,47 @@ class EcfrClient
   # @param title [Integer] CFR title number
   # @param date [String] Date for version (defaults to latest available)
   # @param chapter [String] Optional specific chapter to fetch (e.g., "I", "IV")
-  def fetch_regulations(title, date = nil, chapter: nil)
+  # @param part [String] Optional specific part to fetch (e.g., "1", "100"). Takes precedence over chapter if both likely.
+  def fetch_regulations(title, date = nil, chapter: nil, part: nil)
     date ||= get_latest_version_date(title)
 
-    Rails.logger.info("Downloading XML for Title #{title}#{chapter ? " Chapter #{chapter}" : ""}...")
+    label = "Title #{title}"
+    label += " Chapter #{chapter}" if chapter.present?
+    label += " Part #{part}" if part.present?
+
+    Rails.logger.info("Downloading XML for #{label}...")
+
+    # Ideally only one of chapter or part is used.
+    # If part is present, use part. If chapter is present, use chapter.
     url = "#{BASE_URL}/versioner/v1/full/#{date}/title-#{title}.xml"
-    url += "?chapter=#{chapter}" if chapter.present?
+    if part.present?
+      url += "?part=#{part}"
+    elsif chapter.present?
+      url += "?chapter=#{chapter}"
+    end
 
     # We return the tempfile path so the caller can attach it to a model
     # or process it immediately.
-    Tempfile.create([ "title-#{title}#{chapter ? "-chap-#{chapter}" : ""}", ".xml" ]) do |tempfile|
+    filename_parts = [ "title-#{title}" ]
+    filename_parts << "-chap-#{chapter}" if chapter.present?
+    filename_parts << "-part-#{part}" if part.present?
+
+    Tempfile.create([ filename_parts.join, ".xml" ]) do |tempfile|
       download_with_retry(url, tempfile.path)
       yield tempfile.path if block_given?
+    end
+  end
+
+  # Fetch the structure (Table of Contents) for a Title
+  # Returns a JSON hash representing the hierarchy
+  def fetch_structure(title, date = nil)
+    date ||= get_latest_version_date(title)
+    cache_key = "ecfr/structure/#{date}/title-#{title}"
+
+    Rails.cache.fetch(cache_key, expires_in: CACHE_EXPIRES_IN) do
+      url = "#{BASE_URL}/versioner/v1/structure/#{date}/title-#{title}.json"
+      response = get_with_retry(url)
+      JSON.parse(response)
     end
   end
 
@@ -166,7 +195,7 @@ class EcfrClient
   # Streams download directly to a file path
   def download_with_retry(url, destination_path, attempt: 1)
     uri = URI(url)
-    Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10, read_timeout: 120) do |http|
+    Net::HTTP.start(uri.host, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 10, read_timeout: 120) do |http|
       request = Net::HTTP::Get.new(uri)
 
       http.request(request) do |response|
@@ -184,7 +213,7 @@ class EcfrClient
         end
       end
     end
-  rescue Net::OpenTimeout, Net::ReadTimeout, RateLimitError, ApiError => e
+  rescue Net::OpenTimeout, Net::ReadTimeout, RateLimitError, ApiError, OpenSSL::SSL::SSLError => e
     if attempt < MAX_RETRIES
       delay = INITIAL_RETRY_DELAY * (2 ** (attempt - 1))
       sleep(delay)
@@ -197,22 +226,20 @@ class EcfrClient
   def get_with_retry(url, attempt: 1)
     # Keeps existing behavior for small JSON headers (fetch_agencies)
     uri = URI(url)
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-    http.open_timeout = 10
-    http.read_timeout = 300 # Title 40 (EPA) can take > 60s to generate
 
-    request = Net::HTTP::Get.new(uri)
-    response = http.request(request)
+    Net::HTTP.start(uri.host, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE, open_timeout: 10, read_timeout: 600) do |http|
+      request = Net::HTTP::Get.new(uri)
+      response = http.request(request)
 
-    case response.code.to_i
-    when 200 then response.body
-    when 404 then raise NotFoundError, "Resource not found: #{url}"
-    when 429 then raise RateLimitError, "Rate limit exceeded"
-    when 500..599 then raise ApiError, "Server error: #{response.code}"
-    else raise ApiError, "Unexpected status: #{response.code}"
+      case response.code.to_i
+      when 200 then response.body
+      when 404 then raise NotFoundError, "Resource not found: #{url}"
+      when 429 then raise RateLimitError, "Rate limit exceeded"
+      when 500..599 then raise ApiError, "Server error: #{response.code}"
+      else raise ApiError, "Unexpected status: #{response.code}"
+      end
     end
-  rescue Net::OpenTimeout, Net::ReadTimeout, RateLimitError, ApiError => _e
+  rescue Net::OpenTimeout, Net::ReadTimeout, RateLimitError, ApiError, OpenSSL::SSL::SSLError => _e
     if attempt < MAX_RETRIES
       delay = INITIAL_RETRY_DELAY * (2 ** (attempt - 1))
       sleep(delay)

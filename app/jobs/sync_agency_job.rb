@@ -44,18 +44,18 @@ class SyncAgencyJob < ApplicationJob
   end
 
   def sync_title(agency, title, sync_log)
-    allowed_refs = agency.cfr_references.select { |r| r["title"].to_s == title.to_s }
-    specific_chapters = allowed_refs.map { |r| r["chapter"] }.compact.uniq
+    structure = EcfrClient.new.fetch_structure(title)
 
-    # If we have specific chapters, fetch specific chapters only
-    # If no specific chapters (e.g. whole title assigned), fetch whole title (nil chapter)
-    chapters_to_fetch = specific_chapters.any? ? specific_chapters : [ nil ]
+    # Identify all Parts that this agency cares about
+    parts_to_fetch = collect_matching_parts(structure, agency.cfr_references)
 
-    chapters_to_fetch.each do |chapter|
-       EcfrClient.new.fetch_regulations(title, chapter: chapter) do |file_path|
+    Rails.logger.info("Agency #{agency.acronym} needs #{parts_to_fetch.size} parts for Title #{title}")
+
+    parts_to_fetch.each do |part_node|
+       part_number = part_node["identifier"]
+
+       EcfrClient.new.fetch_regulations(title, part: part_number) do |file_path|
          EcfrClient.new.parse_xml_file(file_path) do |part_data|
-           # If we are fetching by chapter, we don't need to filter again,
-           # but the processing logic is generic so keeping it safe.
            process_parts(agency, title, [ part_data ], sync_log)
          end
        end
@@ -64,26 +64,55 @@ class SyncAgencyJob < ApplicationJob
     Rails.logger.error("Error syncing title #{title}: #{e.message}")
   end
 
+  # Recursively traverse the structure to find 'part' nodes that match the allowed references
+  def collect_matching_parts(node, references, current_context = {})
+    matches = []
+
+    # Update context based on current node
+    context = current_context.dup
+    case node["type"]
+    when "title"
+      context[:title] = node["identifier"]
+    when "chapter"
+      context[:chapter] = node["identifier"]
+    when "subchapter"
+      context[:subtitle] = node["identifier"] # Agency ref calls it "subtitle", API says "subchapter"
+    end
+
+    # If it's a PART, check if it matches
+    if node["type"] == "part"
+       if part_matches_references?(context, references)
+         matches << node
+       end
+    elsif node["children"].present?
+      # Recurse
+      node["children"].each do |child|
+        matches.concat(collect_matching_parts(child, references, context))
+      end
+    end
+
+    matches
+  end
+
+  def part_matches_references?(context, references)
+    # Filter references for this Title
+    title_refs = references.select { |r| r["title"].to_s == context[:title].to_s }
+    return false if title_refs.empty?
+
+    # If any reference allows this part based on Chapter/Subtitle, return true
+    title_refs.any? do |ref|
+      chapter_match = ref["chapter"].blank? || (ref["chapter"] == context[:chapter])
+      subtitle_match = ref["subtitle"].blank? || (ref["subtitle"] == context[:subtitle])
+
+      chapter_match && subtitle_match
+    end
+  end
+
   def process_parts(agency, title, parts, sync_log)
-    allowed_refs = agency.cfr_references.select { |r| r["title"].to_s == title.to_s }
-    has_specific_filters = allowed_refs.any? { |r| r["chapter"].present? || r["subtitle"].present? }
+    # With Part-based fetching, we have already filtered before downloading.
+    # However, we keep the processing logic simple.
 
     parts.each do |part_data|
-      # Filter by chapter/subtitle if agency has specific assignments
-      if has_specific_filters
-        # A part is allowed if it matches ANY of the allowed references
-        match = allowed_refs.any? do |ref|
-          # A reference matches if all its specified constraints are met by the part
-          # KNOWN LIMITATION: WHEN CHAPTER IS NOT PRESENT BUT SUBTITLE IS, IT IS NOT MATCHED
-          chapter_match = ref["chapter"].blank? || (ref["chapter"] == part_data[:chapter])
-          subtitle_match = ref["subtitle"].blank? || (ref["subtitle"] == part_data[:subtitle])
-
-          chapter_match && subtitle_match
-        end
-
-        next unless match
-      end
-
       # Skip if no content
       next if part_data[:content].blank?
 

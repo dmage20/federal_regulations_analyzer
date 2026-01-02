@@ -1,5 +1,6 @@
 class RegulationSnapshot < ApplicationRecord
   belongs_to :regulation
+  has_one_attached :xml_content
 
   validates :word_count, presence: true, numericality: { greater_than_or_equal_to: 0 }
   validates :checksum, presence: true

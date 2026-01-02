@@ -40,21 +40,17 @@ class EcfrClient
   # Fetch full regulation text for a CFR title
   # @param title [Integer] CFR title number
   # @param date [String] Date for version (defaults to latest available)
-  # Fetch full regulation text for a CFR title - STREAMS to file to save memory
-  # @param title [Integer] CFR title number
-  # @param date [String] Date for version (defaults to latest available)
   def fetch_regulations(title, date = nil)
     date ||= get_latest_version_date(title)
 
-    # We do NOT cache the full XML in Redis/Memory anymore as it's too large.
-    # We download, parse, and discard.
     Rails.logger.info("Downloading XML for Title #{title}...")
     url = "#{BASE_URL}/versioner/v1/full/#{date}/title-#{title}.xml"
 
+    # We return the tempfile path so the caller can attach it to a model
+    # or process it immediately.
     Tempfile.create([ "title-#{title}", ".xml" ]) do |tempfile|
       download_with_retry(url, tempfile.path)
-      # Pass the file handle to Nokogiri instead of the huge string
-      parse_xml_file(tempfile.path)
+      yield tempfile.path if block_given?
     end
   end
 
@@ -94,6 +90,56 @@ class EcfrClient
     []
   end
 
+  def parse_xml_file(file_path)
+    # Use streaming reader to avoid loading entire file into memory
+    parts = []
+    current_part = nil
+    capture_text = false
+
+    File.open(file_path, "r") do |f|
+      reader = Nokogiri::XML::Reader(f)
+      reader.each do |node|
+        if node.node_type == Nokogiri::XML::Reader::TYPE_ELEMENT
+          case node.name
+          when "DIV5"
+            if node.attribute("TYPE") == "PART"
+              current_part = {
+                part_number: node.attribute("N"),
+                identifier: "Part #{node.attribute("N")}",
+                content: "" # We will accumulate text content here
+              }
+              parts << current_part
+            end
+          when "HEAD"
+             if current_part && current_part[:label].nil?
+               # The first HEAD inside the DIV5 is usually the title
+               # We need to read the text content of this node.
+               # Nokogiri Reader is forward-only, so we read untill text.
+             end
+          when "P"
+            capture_text = true if current_part
+          end
+        elsif node.node_type == Nokogiri::XML::Reader::TYPE_TEXT
+          if capture_text && current_part
+            current_part[:content] << node.value << "\n\n"
+          end
+          # Rudimentary label extraction (improving this would require more complex state tracking)
+          if current_part && current_part[:label].nil? && !node.value.strip.empty?
+             current_part[:label] = node.value.strip
+          end
+        elsif node.node_type == Nokogiri::XML::Reader::TYPE_END_ELEMENT
+          if node.name == "P"
+            capture_text = false
+          end
+        end
+      end
+    end
+
+    { parts: parts }
+  rescue Nokogiri::XML::SyntaxError
+    { parts: [] }
+  end
+
   private
 
   # Streams download directly to a file path
@@ -129,7 +175,6 @@ class EcfrClient
 
   def get_with_retry(url, attempt: 1)
     # Keeps existing behavior for small JSON headers (fetch_agencies)
-    # ... (original implementation)
     uri = URI(url)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
@@ -154,42 +199,6 @@ class EcfrClient
     else
       raise
     end
-  end
-
-  def parse_xml_file(file_path)
-    # Parse directly from file IO to avoid loading string into memory
-    File.open(file_path, "r") do |f|
-      doc = Nokogiri::XML(f)
-
-      # Extract parts and their sections from XML
-      parts = doc.xpath("//DIV5[@TYPE='PART']").map do |part|
-        part_number = part.attr("N")
-        part_title = part.xpath("HEAD").text.strip
-
-        chapter_node = part.xpath("ancestor::DIV3[@TYPE='CHAPTER']").first
-        chapter = chapter_node&.attr("N")
-
-        subtitle_node = part.xpath("ancestor::DIV2[@TYPE='SUBTITLE']").first
-        subtitle = subtitle_node&.attr("N")
-
-        {
-            part_number: part_number,
-            identifier: "Part #{part_number}",
-            label: part_title,
-            chapter: chapter,
-            subtitle: subtitle,
-            content: extract_text_content(part)
-        }
-      end
-
-      { parts: parts }
-    end
-  rescue Nokogiri::XML::SyntaxError
-    { parts: [] }
-  end
-
-  def extract_text_content(node)
-    node.xpath(".//P").map(&:text).join("\n\n")
   end
 
   def extract_acronym(name)

@@ -48,7 +48,8 @@ class SyncAgencyJob < ApplicationJob
     structure = client.fetch_structure(title)
 
     # Identify all Parts that this agency cares about
-    parts_to_fetch = collect_matching_parts(structure, agency.cfr_references)
+    # Deduplicate by identifier to prevent infinite loops
+    parts_to_fetch = collect_matching_parts(structure, agency.cfr_references).uniq { |p| p["identifier"] }
 
     Rails.logger.info("Agency #{agency.acronym} needs #{parts_to_fetch.size} parts for Title #{title}")
 

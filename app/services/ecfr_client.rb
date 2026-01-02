@@ -166,7 +166,7 @@ class EcfrClient
   # Streams download directly to a file path
   def download_with_retry(url, destination_path, attempt: 1)
     uri = URI(url)
-    Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10, read_timeout: 600) do |http|
+    Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10, read_timeout: 120) do |http|
       request = Net::HTTP::Get.new(uri)
 
       http.request(request) do |response|

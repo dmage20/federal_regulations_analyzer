@@ -50,3 +50,7 @@ dump.rdb
 
 # Playwright
 .playwright-mcp/
+
+# Ignore key files for decrypting credentials and more.
+/config/*.key
+

@@ -26,19 +26,19 @@ class CreateRegulationVersions < ActiveRecord::Migration[8.1]
 
     # Prevent duplicate effective dates for same regulation
     add_index :regulation_versions,
-      [:regulation_id, :effective_date],
+      [ :regulation_id, :effective_date ],
       unique: true,
       name: 'idx_unique_reg_effective_dates'
 
     # Partial index for current versions (most queries)
     add_index :regulation_versions,
-      [:regulation_id, :superseded_at],
+      [ :regulation_id, :superseded_at ],
       where: 'superseded_at IS NULL',
       name: 'idx_current_versions'
 
     # Temporal range queries
     add_index :regulation_versions,
-      [:effective_date, :superseded_at],
+      [ :effective_date, :superseded_at ],
       name: 'idx_temporal_range'
   end
 end

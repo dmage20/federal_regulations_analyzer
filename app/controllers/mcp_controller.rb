@@ -5,13 +5,13 @@ class McpController < ApplicationController
     # Forward the JSON-RPC request to the stdio MCP server
     request_json = request.body.read
 
-    mcp_server_path = Rails.root.join('bin', 'mcp-server')
+    mcp_server_path = Rails.root.join("bin", "mcp-server")
 
     # Spawn MCP server and send request via stdin
-    response_json = IO.popen(['ruby', mcp_server_path.to_s], 'r+') do |io|
+    response_json = IO.popen([ "ruby", mcp_server_path.to_s ], "r+") do |io|
       io.puts request_json
       io.close_write
-      io.read.lines.reject { |line| line.include?('MCP Server running') }.join
+      io.read.lines.reject { |line| line.include?("MCP Server running") }.join
     end
 
     render json: JSON.parse(response_json), status: :ok

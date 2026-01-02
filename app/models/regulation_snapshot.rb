@@ -12,13 +12,13 @@ class RegulationSnapshot < ApplicationRecord
 
   # Find the most recent snapshot before or on a given date
   def self.at_date(date)
-    where('snapshot_date <= ?', date).order(snapshot_date: :desc).first
+    where("snapshot_date <= ?", date).order(snapshot_date: :desc).first
   end
 
   # Check if this snapshot represents a change from the previous one
   def changed_from_previous?
     previous = regulation.snapshots
-      .where('snapshot_date < ?', snapshot_date)
+      .where("snapshot_date < ?", snapshot_date)
       .order(snapshot_date: :desc)
       .first
 
@@ -29,7 +29,7 @@ class RegulationSnapshot < ApplicationRecord
   # Calculate word count delta from previous snapshot
   def word_count_delta
     previous = regulation.snapshots
-      .where('snapshot_date < ?', snapshot_date)
+      .where("snapshot_date < ?", snapshot_date)
       .order(snapshot_date: :desc)
       .first
 

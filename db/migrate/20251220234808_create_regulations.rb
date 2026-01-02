@@ -16,8 +16,8 @@ class CreateRegulations < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :regulations, [:agency_id, :cfr_title]
-    add_index :regulations, [:cfr_title, :part, :section], unique: true
+    add_index :regulations, [ :agency_id, :cfr_title ]
+    add_index :regulations, [ :cfr_title, :part, :section ], unique: true
     add_index :regulations, :last_amended_on
   end
 end

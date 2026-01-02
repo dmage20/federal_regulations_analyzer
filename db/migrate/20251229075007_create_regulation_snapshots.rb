@@ -9,7 +9,7 @@ class CreateRegulationSnapshots < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :regulation_snapshots, [:regulation_id, :snapshot_date], unique: true
+    add_index :regulation_snapshots, [ :regulation_id, :snapshot_date ], unique: true
     add_index :regulation_snapshots, :snapshot_date
   end
 end

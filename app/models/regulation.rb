@@ -1,17 +1,17 @@
 class Regulation < ApplicationRecord
   belongs_to :agency, counter_cache: true
-  has_many :snapshots, class_name: 'RegulationSnapshot', dependent: :destroy
+  has_many :snapshots, class_name: "RegulationSnapshot", dependent: :destroy
 
   validates :cfr_title, presence: true
   validates :word_count, presence: true, numericality: { greater_than_or_equal_to: 0 }
-  validates :cfr_title, uniqueness: { scope: [:agency, :part, :section] }
+  validates :cfr_title, uniqueness: { scope: [ :agency, :part, :section ] }
 
   scope :by_title, ->(title) { where(cfr_title: title) }
   scope :recently_amended, -> { order(last_amended_on: :desc) }
   scope :by_word_count, -> { order(word_count: :desc) }
 
   def citation
-    parts = [cfr_title, "CFR"]
+    parts = [ cfr_title, "CFR" ]
     parts << part if part.present?
     parts << section if section.present?
     parts.join(" ")

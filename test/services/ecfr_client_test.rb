@@ -176,13 +176,13 @@ class EcfrClientTest < ActiveSupport::TestCase
           name: "Environmental Protection Agency",
           short_name: "EPA",
           description: "Protects human health and the environment",
-          title_numbers: [40]
+          title_numbers: [ 40 ]
         },
         {
           name: "Food and Drug Administration",
           short_name: "FDA",
           description: "Protects public health",
-          title_numbers: [21]
+          title_numbers: [ 21 ]
         }
       ]
     }.to_json

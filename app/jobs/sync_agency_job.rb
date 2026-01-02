@@ -44,12 +44,21 @@ class SyncAgencyJob < ApplicationJob
   end
 
   def sync_title(agency, title, sync_log)
-    # Stream the XML file download
-    EcfrClient.new.fetch_regulations(title) do |file_path|
-      # Parse the file from disk, processing one part at a time using streaming
-      EcfrClient.new.parse_xml_file(file_path) do |part_data|
-          process_parts(agency, title, [ part_data ], sync_log)
-      end
+    allowed_refs = agency.cfr_references.select { |r| r["title"].to_s == title.to_s }
+    specific_chapters = allowed_refs.map { |r| r["chapter"] }.compact.uniq
+
+    # If we have specific chapters, fetch specific chapters only
+    # If no specific chapters (e.g. whole title assigned), fetch whole title (nil chapter)
+    chapters_to_fetch = specific_chapters.any? ? specific_chapters : [ nil ]
+
+    chapters_to_fetch.each do |chapter|
+       EcfrClient.new.fetch_regulations(title, chapter: chapter) do |file_path|
+         EcfrClient.new.parse_xml_file(file_path) do |part_data|
+           # If we are fetching by chapter, we don't need to filter again,
+           # but the processing logic is generic so keeping it safe.
+           process_parts(agency, title, [ part_data ], sync_log)
+         end
+       end
     end
   rescue => e
     Rails.logger.error("Error syncing title #{title}: #{e.message}")

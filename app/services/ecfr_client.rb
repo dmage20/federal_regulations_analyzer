@@ -40,15 +40,17 @@ class EcfrClient
   # Fetch full regulation text for a CFR title
   # @param title [Integer] CFR title number
   # @param date [String] Date for version (defaults to latest available)
-  def fetch_regulations(title, date = nil)
+  # @param chapter [String] Optional specific chapter to fetch (e.g., "I", "IV")
+  def fetch_regulations(title, date = nil, chapter: nil)
     date ||= get_latest_version_date(title)
 
-    Rails.logger.info("Downloading XML for Title #{title}...")
+    Rails.logger.info("Downloading XML for Title #{title}#{chapter ? " Chapter #{chapter}" : ""}...")
     url = "#{BASE_URL}/versioner/v1/full/#{date}/title-#{title}.xml"
+    url += "?chapter=#{chapter}" if chapter.present?
 
     # We return the tempfile path so the caller can attach it to a model
     # or process it immediately.
-    Tempfile.create([ "title-#{title}", ".xml" ]) do |tempfile|
+    Tempfile.create([ "title-#{title}#{chapter ? "-chap-#{chapter}" : ""}", ".xml" ]) do |tempfile|
       download_with_retry(url, tempfile.path)
       yield tempfile.path if block_given?
     end
@@ -164,7 +166,7 @@ class EcfrClient
   # Streams download directly to a file path
   def download_with_retry(url, destination_path, attempt: 1)
     uri = URI(url)
-    Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+    Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 10, read_timeout: 600) do |http|
       request = Net::HTTP::Get.new(uri)
 
       http.request(request) do |response|

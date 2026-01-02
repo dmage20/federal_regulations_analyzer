@@ -123,6 +123,7 @@ class EcfrClient
 
   def parse_xml_file(file_path)
     # Use streaming reader to avoid loading entire file into memory
+    # Calculate metrics on-the-fly without storing full content
     parts = []
     current_part = nil
     capture_text = false
@@ -140,6 +141,7 @@ class EcfrClient
                 if block_given?
                   yield current_part
                   current_part = nil # Free memory
+                  GC.start # Force garbage collection between parts
                 else
                   parts << current_part
                 end
@@ -148,7 +150,8 @@ class EcfrClient
               current_part = {
                 part_number: node.attribute("N"),
                 identifier: "Part #{node.attribute("N")}",
-                content: "" # We will accumulate text content here
+                word_count: 0,
+                restrictions_count: 0
               }
             end
           when "HEAD"
@@ -162,7 +165,10 @@ class EcfrClient
           end
         elsif node.node_type == Nokogiri::XML::Reader::TYPE_TEXT
           if capture_text && current_part
-            current_part[:content] << node.value << "\n\n"
+            # Calculate metrics WITHOUT storing the full text
+            text = node.value
+            current_part[:word_count] += text.split.size
+            current_part[:restrictions_count] += text.scan(/\b(shall|must|prohibited|required)\b/i).size
           end
           # Rudimentary label extraction (improving this would require more complex state tracking)
           if current_part && current_part[:label].nil? && !node.value.strip.empty?
@@ -179,6 +185,7 @@ class EcfrClient
       if current_part
         if block_given?
           yield current_part
+          GC.start # Force garbage collection for the final part
         else
           parts << current_part
         end

@@ -44,7 +44,8 @@ class SyncAgencyJob < ApplicationJob
   end
 
   def sync_title(agency, title, sync_log)
-    structure = EcfrClient.new.fetch_structure(title)
+    client = EcfrClient.new
+    structure = client.fetch_structure(title)
 
     # Identify all Parts that this agency cares about
     parts_to_fetch = collect_matching_parts(structure, agency.cfr_references)
@@ -54,8 +55,8 @@ class SyncAgencyJob < ApplicationJob
     parts_to_fetch.each do |part_node|
        part_number = part_node["identifier"]
 
-       EcfrClient.new.fetch_regulations(title, part: part_number) do |file_path|
-         EcfrClient.new.parse_xml_file(file_path) do |part_data|
+       client.fetch_regulations(title, part: part_number) do |file_path|
+         client.parse_xml_file(file_path) do |part_data|
            process_parts(agency, title, [ part_data ], sync_log)
          end
        end
@@ -110,16 +111,15 @@ class SyncAgencyJob < ApplicationJob
 
   def process_parts(agency, title, parts, sync_log)
     # With Part-based fetching, we have already filtered before downloading.
-    # However, we keep the processing logic simple.
+    # Metrics are pre-calculated during streaming parse.
 
     parts.each do |part_data|
-      # Skip if no content
-      next if part_data[:content].blank?
-
       part_number = part_data[:part_number]
-      content = part_data[:content]
-      word_count = content.split.size
-      restrictions_count = content.scan(/\b(shall|must|may not|prohibited|required)\b/i).size
+      word_count = part_data[:word_count]
+      restrictions_count = part_data[:restrictions_count]
+
+      # Skip if no content (word_count = 0)
+      next if word_count.zero?
 
       reg = Regulation.find_or_initialize_by(
         agency: agency,

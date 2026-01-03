@@ -63,20 +63,7 @@ class EcfrBulkClient
   def download_with_retry(url, destination_path, attempt: 1)
     uri = URI(url)
 
-    http_options = {
-      use_ssl: true,
-      open_timeout: 30,
-      read_timeout: 600
-    }
-
-    # Only in development/test: skip SSL verification if certificates are outdated
-    # Production environments have proper certificates
-    if !Rails.env.production? && ssl_verification_problematic?
-      http_options[:verify_mode] = OpenSSL::SSL::VERIFY_NONE
-      Rails.logger.warn("SSL verification disabled for development environment")
-    end
-
-    Net::HTTP.start(uri.host, uri.port, **http_options) do |http|
+    Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 30, read_timeout: 600) do |http|
       request = Net::HTTP::Get.new(uri)
 
       http.request(request) do |response|
@@ -105,11 +92,5 @@ class EcfrBulkClient
     else
       raise DownloadError, "Failed to download after #{MAX_RETRIES} attempts: #{e.message}"
     end
-  end
-
-  def ssl_verification_problematic?
-    # Check if we're having SSL certificate issues (common in local dev)
-    # This is a simple heuristic - production should always have proper certs
-    true
   end
 end

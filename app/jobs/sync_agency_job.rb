@@ -61,7 +61,7 @@ class SyncAgencyJob < ApplicationJob
       # Filter: only process parts that match agency's references
       next unless part_matches_agency_references?(part_data, title_refs)
 
-      process_parts(agency, title, [part_data], sync_log)
+      process_parts(agency, title, [ part_data ], sync_log)
       parts_processed += 1
     end
 

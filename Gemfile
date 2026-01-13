@@ -42,7 +42,7 @@ gem "aws-sdk-s3", require: false
 gem "http", "~> 5.0"
 
 # XML parsing (already included in Rails, but explicit for clarity)
-gem "nokogiri", "~> 1.16"
+gem "nokogiri", "~> 1.19"
 
 # Pagination
 gem "kaminari"

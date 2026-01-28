@@ -1,13 +1,18 @@
-# Streaming JSON parser that extracts a specific chapter from large eCFR
-# structure JSON files (10MB+) with early termination for memory efficiency.
+# Streaming JSON parser that extracts a specific node (chapter, subtitle,
+# subchapter, or part) from large eCFR structure JSON files (10MB+) with
+# early termination for memory efficiency.
 #
 # Uses SAX-style parsing via yajl-ruby to avoid loading the entire JSON
-# response into memory. Stops parsing as soon as the target chapter is found.
+# response into memory. Stops parsing as soon as the target node is found.
 #
 # Usage:
 #   extractor = EcfrChapterExtractor.new(date: '2024-01-01', title: 40, chapter: 'III')
 #   chapter_data = extractor.call
 #   # => { "identifier" => "III", "type" => "chapter", "label" => "Chapter III—...", "children" => [...] }
+#
+#   # Extract by a different structural type:
+#   extractor = EcfrChapterExtractor.new(date: '2024-01-01', title: 21, chapter: 'A', type: 'subtitle')
+#   subtitle_data = extractor.call
 #
 class EcfrChapterExtractor
   require "net/http"
@@ -20,6 +25,9 @@ class EcfrChapterExtractor
   HTTP_OPEN_TIMEOUT = 10 # seconds
   HTTP_READ_TIMEOUT = 30 # seconds
 
+  # Supported structural types in eCFR hierarchy
+  VALID_TYPES = %w[chapter subtitle subchapter part].freeze
+
   class ExtractionError < StandardError; end
   class ChapterNotFound < ExtractionError; end
   class ApiError < ExtractionError; end
@@ -27,11 +35,14 @@ class EcfrChapterExtractor
 
   # @param date [String] Date in YYYY-MM-DD format
   # @param title [Integer] CFR title number (1-50)
-  # @param chapter [String] Chapter identifier as Roman numeral (e.g., "I", "III")
-  def initialize(date:, title:, chapter:)
+  # @param chapter [String] Node identifier (e.g., "III", "A", "1500")
+  # @param type [String] Structural type to match: "chapter", "subtitle", "subchapter", or "part".
+  #   Defaults to "chapter".
+  def initialize(date:, title:, chapter:, type: "chapter")
     @date = date
     @title = title
     @chapter = chapter.to_s
+    @type = VALID_TYPES.include?(type.to_s) ? type.to_s : "chapter"
   end
 
   # Streams the eCFR structure JSON and extracts the target chapter.
@@ -42,18 +53,18 @@ class EcfrChapterExtractor
   # @raise [ApiError] if the API returns a non-200 status
   # @raise [NetworkError] if the HTTP request fails
   def call
-    Rails.logger.info("Extracting chapter #{@chapter} from Title #{@title} (#{@date})...")
+    Rails.logger.info("Extracting #{@type} #{@chapter} from Title #{@title} (#{@date})...")
 
     result = stream_and_extract
     if result
-      Rails.logger.info("Found chapter #{@chapter} in Title #{@title} (#{result["children"]&.size || 0} children)")
+      Rails.logger.info("Found #{@type} #{@chapter} in Title #{@title} (#{result["children"]&.size || 0} children)")
       result
     else
-      raise ChapterNotFound, "Chapter #{@chapter} not found in Title #{@title} for date #{@date}"
+      raise ChapterNotFound, "#{@type.capitalize} #{@chapter} not found in Title #{@title} for date #{@date}"
     end
   rescue ChapterFound => e
     # Early termination signal from the parser — this is the success path
-    Rails.logger.info("Found chapter #{@chapter} in Title #{@title} via early termination")
+    Rails.logger.info("Found #{@type} #{@chapter} in Title #{@title} via early termination")
     e.chapter_data
   end
 
@@ -66,21 +77,8 @@ class EcfrChapterExtractor
   # Streams the HTTP response and feeds chunks to the SAX parser.
   # Returns the extracted chapter Hash, or nil if not found.
   def stream_and_extract
-    parser_handler = EcfrChapterParser.new(@chapter)
-    json_parser = Yajl::Parser.new
-    json_parser.on_parse_complete = proc { |obj| parser_handler.on_parse_complete(obj) }
-
     with_streaming_response(api_url) do |response|
-      # Feed the streamed JSON into the SAX-style callback parser.
-      # For yajl-ruby, we use the chunked parse approach: feed chunks
-      # and let it call on_parse_complete when the top-level object is done.
-      #
-      # However, for early termination we use a different approach:
-      # we use a custom SAX-style handler that tracks depth and captures
-      # only the target chapter object.
-      handler = StreamingChapterHandler.new(@chapter)
-      stream_parser = Yajl::Parser.new
-      stream_parser.on_parse_complete = proc { |_obj| }
+      handler = StreamingChapterHandler.new(@chapter, @type)
 
       begin
         response.read_body do |chunk|
@@ -144,28 +142,25 @@ class EcfrChapterExtractor
   end
 
   # Streaming handler that buffers JSON chunks and uses yajl-ruby to
-  # incrementally parse the structure, extracting only the target chapter.
+  # incrementally parse the structure, extracting only the target node.
   #
   # Strategy:
   # - Parse the full JSON via chunked feeding into Yajl::Parser
   # - Use a custom callback that inspects the top-level "children" array
-  # - When target chapter is found, raise ChapterFound to terminate early
+  # - When target node is found, raise ChapterFound to terminate early
   #
-  # Because the eCFR structure JSON has children at the top level that are
-  # chapters, we feed the entire stream but short-circuit on match.
+  # The eCFR structure JSON has children at the top level that can be
+  # chapters, subtitles, subchapters, or parts depending on the title.
   class StreamingChapterHandler
-    def initialize(target_chapter)
-      @target_chapter = target_chapter
+    def initialize(target_identifier, target_type)
+      @target_identifier = target_identifier
+      @target_type = target_type
       @result = nil
-      @buffer = +""
       @parser = Yajl::Parser.new
       @parser.on_parse_complete = method(:on_document_parsed)
     end
 
     def receive_chunk(chunk)
-      # Feed chunk to the incremental parser. Yajl will call
-      # on_document_parsed when the full JSON object is complete.
-      # We catch ChapterFound if raised during parsing.
       @parser << chunk
     end
 
@@ -176,35 +171,20 @@ class EcfrChapterExtractor
     private
 
     def on_document_parsed(document)
-      # The document is the full parsed JSON. Walk the top-level children
-      # to find our target chapter.
-      children = document["children"] || []
+      search_children(document["children"] || [])
+    end
+
+    # Recursively searches children for the target node. This allows
+    # matching nodes that may be nested (e.g., a subchapter inside a chapter).
+    def search_children(children)
       children.each do |child|
-        if child["type"] == "chapter" && child["identifier"] == @target_chapter
+        if child["type"] == @target_type && child["identifier"] == @target_identifier
           @result = child
           raise ChapterFound.new(child)
         end
+        # Continue searching nested children for non-chapter types
+        search_children(child["children"] || []) if child["children"]
       end
     end
-  end
-
-  # Simple handler for non-streaming parse-complete callback
-  class EcfrChapterParser
-    def initialize(target_chapter)
-      @target_chapter = target_chapter
-      @result = nil
-    end
-
-    def on_parse_complete(document)
-      children = document["children"] || []
-      children.each do |child|
-        if child["type"] == "chapter" && child["identifier"] == @target_chapter
-          @result = child
-          break
-        end
-      end
-    end
-
-    attr_reader :result
   end
 end

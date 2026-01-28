@@ -145,6 +145,115 @@ class StreamingSyncAgencyJobTest < ActiveSupport::TestCase
     assert_not_nil agency
   end
 
+  test "handles subtitle reference type" do
+    @agency_data[:cfr_references] = [
+      { "title" => 40, "subtitle" => "A" }
+    ]
+
+    stub_request(:get, %r{versioner/v1/structure/.*title-40\.json})
+      .to_return(status: 200, body: {
+        "identifier" => "40",
+        "type" => "title",
+        "children" => [
+          {
+            "identifier" => "A",
+            "type" => "subtitle",
+            "label" => "Subtitle A",
+            "children" => [
+              { "identifier" => "200", "type" => "part", "label" => "Part 200", "children" => [
+                { "identifier" => "200.1", "type" => "section", "label" => "Section 200.1", "children" => [] }
+              ] }
+            ]
+          }
+        ]
+      }.to_json, headers: { "Content-Type" => "application/json" })
+
+    StreamingSyncAgencyJob.new.perform(
+      agency_data: @agency_data,
+      sync_log_id: @sync_log.id
+    )
+
+    agency = Agency.find_by(acronym: "CEQ")
+    assert_equal 1, agency.regulations.count
+    assert_equal "200", agency.regulations.first.part
+  end
+
+  test "handles subchapter reference type" do
+    @agency_data[:cfr_references] = [
+      { "title" => 40, "subchapter" => "B" }
+    ]
+
+    stub_request(:get, %r{versioner/v1/structure/.*title-40\.json})
+      .to_return(status: 200, body: {
+        "identifier" => "40",
+        "type" => "title",
+        "children" => [
+          {
+            "identifier" => "I",
+            "type" => "chapter",
+            "label" => "Chapter I",
+            "children" => [
+              {
+                "identifier" => "B",
+                "type" => "subchapter",
+                "label" => "Subchapter B",
+                "children" => [
+                  { "identifier" => "300", "type" => "part", "label" => "Part 300", "children" => [] }
+                ]
+              }
+            ]
+          }
+        ]
+      }.to_json, headers: { "Content-Type" => "application/json" })
+
+    StreamingSyncAgencyJob.new.perform(
+      agency_data: @agency_data,
+      sync_log_id: @sync_log.id
+    )
+
+    agency = Agency.find_by(acronym: "CEQ")
+    assert_equal 1, agency.regulations.count
+    assert_equal "300", agency.regulations.first.part
+  end
+
+  test "handles part reference type" do
+    @agency_data[:cfr_references] = [
+      { "title" => 40, "part" => "261" }
+    ]
+
+    stub_request(:get, %r{versioner/v1/structure/.*title-40\.json})
+      .to_return(status: 200, body: {
+        "identifier" => "40",
+        "type" => "title",
+        "children" => [
+          {
+            "identifier" => "I",
+            "type" => "chapter",
+            "children" => [
+              {
+                "identifier" => "A",
+                "type" => "subchapter",
+                "children" => [
+                  { "identifier" => "261", "type" => "part", "label" => "Part 261", "children" => [
+                    { "identifier" => "261.1", "type" => "section", "label" => "Section 261.1", "children" => [] }
+                  ] }
+                ]
+              }
+            ]
+          }
+        ]
+      }.to_json, headers: { "Content-Type" => "application/json" })
+
+    StreamingSyncAgencyJob.new.perform(
+      agency_data: @agency_data,
+      sync_log_id: @sync_log.id
+    )
+
+    agency = Agency.find_by(acronym: "CEQ")
+    assert_equal 1, agency.regulations.count
+    assert_equal "261", agency.regulations.first.part
+  end
+
   test "handles multiple title references" do
     @agency_data[:cfr_references] = [
       { "title" => 40, "chapter" => "III" },

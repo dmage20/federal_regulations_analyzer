@@ -216,6 +216,58 @@ class EcfrChapterExtractorTest < ActiveSupport::TestCase
     assert_equal "3", result["identifier"]
   end
 
+  # --- Alternative structural types ---
+
+  test "extracts subtitle from title children" do
+    extractor = EcfrChapterExtractor.new(date: @date, title: @title, chapter: "A", type: "subtitle")
+    response = {
+      "identifier" => "40",
+      "type" => "title",
+      "children" => [
+        { "identifier" => "A", "type" => "subtitle", "label" => "Subtitle A", "children" => [
+          { "identifier" => "I", "type" => "chapter", "label" => "Chapter I", "children" => [] }
+        ]}
+      ]
+    }
+    stub_structure_api(response)
+
+    result = extractor.call
+
+    assert_equal "A", result["identifier"]
+    assert_equal "subtitle", result["type"]
+    assert_equal 1, result["children"].size
+  end
+
+  test "extracts subchapter nested inside chapter" do
+    extractor = EcfrChapterExtractor.new(date: @date, title: @title, chapter: "B", type: "subchapter")
+    stub_structure_api(success_response)
+
+    result = extractor.call
+
+    assert_equal "B", result["identifier"]
+    assert_equal "subchapter", result["type"]
+  end
+
+  test "extracts part nested inside subchapter" do
+    extractor = EcfrChapterExtractor.new(date: @date, title: @title, chapter: "1500", type: "part")
+    stub_structure_api(success_response)
+
+    result = extractor.call
+
+    assert_equal "1500", result["identifier"]
+    assert_equal "part", result["type"]
+  end
+
+  test "defaults to chapter type when invalid type given" do
+    extractor = EcfrChapterExtractor.new(date: @date, title: @title, chapter: "III", type: "invalid")
+    stub_structure_api(success_response)
+
+    result = extractor.call
+
+    assert_equal "III", result["identifier"]
+    assert_equal "chapter", result["type"]
+  end
+
   private
 
   def structure_url

@@ -24,7 +24,7 @@ class StreamingSyncAgencyJob < ApplicationJob
       Rails.logger.info("[StreamingSync] Syncing agency: #{agency.name}")
 
       extract_cfr_references(agency_data).each do |ref|
-        sync_title_chapter(agency, ref, sync_log)
+        sync_title_reference(agency, ref, sync_log)
       end
 
       agency.update_word_count!
@@ -58,53 +58,71 @@ class StreamingSyncAgencyJob < ApplicationJob
     refs.map { |r| r[:title] || r["title"] }.compact.uniq
   end
 
-  # Returns an array of { title:, chapter: } hashes for this agency.
-  # Falls back to title-only references if no chapter info is present.
+  # CFR reference types that can appear in agency cfr_references.
+  # The eCFR API returns references keyed by structural level.
+  REFERENCE_TYPES = %w[chapter subtitle subchapter part].freeze
+
+  # Returns an array of { title:, identifier:, type: } hashes for this agency.
+  # Checks all structural reference types (chapter, subtitle, subchapter, part).
+  # Falls back to title-only references if no structural info is present.
   def extract_cfr_references(data)
     refs = data[:cfr_references] || []
 
-    if refs.any? { |r| r.is_a?(Hash) && (r[:chapter] || r["chapter"]).present? }
-      refs.filter_map do |r|
-        title = r[:title] || r["title"]
-        chapter = r[:chapter] || r["chapter"]
-        next unless title
-        { title: title.to_i, chapter: chapter&.to_s }
-      end.uniq
+    parsed = refs.filter_map do |r|
+      next unless r.is_a?(Hash)
+      title = r[:title] || r["title"]
+      next unless title
+
+      ref_type, ref_id = extract_reference_type_and_id(r)
+      { title: title.to_i, identifier: ref_id&.to_s, type: ref_type }
+    end.uniq
+
+    if parsed.any? { |r| r[:identifier].present? }
+      parsed
     else
-      # No chapter info — fall back to title-level references
-      extract_cfr_titles(data).map { |t| { title: t.to_i, chapter: nil } }
+      extract_cfr_titles(data).map { |t| { title: t.to_i, identifier: nil, type: nil } }
     end
   end
 
-  def sync_title_chapter(agency, ref, sync_log)
-    title = ref[:title]
-    chapter = ref[:chapter]
+  # Finds the first present structural key from the reference hash.
+  def extract_reference_type_and_id(ref)
+    REFERENCE_TYPES.each do |type|
+      value = ref[type.to_sym] || ref[type]
+      return [type, value] if value.present?
+    end
+    [nil, nil]
+  end
 
-    if chapter.present?
-      sync_with_streaming_parser(agency, title, chapter, sync_log)
+  def sync_title_reference(agency, ref, sync_log)
+    title = ref[:title]
+    identifier = ref[:identifier]
+    type = ref[:type]
+
+    if identifier.present?
+      sync_with_streaming_parser(agency, title, identifier, type, sync_log)
     else
       sync_title_structure(agency, title, sync_log)
     end
   rescue EcfrChapterExtractor::ExtractionError => e
-    Rails.logger.warn("[StreamingSync] Extraction failed for Title #{title} Chapter #{chapter}: #{e.message}")
+    Rails.logger.warn("[StreamingSync] Extraction failed for Title #{title} #{type} #{identifier}: #{e.message}")
   rescue => e
-    Rails.logger.error("[StreamingSync] Error syncing Title #{title} Chapter #{chapter}: #{e.message}")
+    Rails.logger.error("[StreamingSync] Error syncing Title #{title} #{type} #{identifier}: #{e.message}")
     raise
   end
 
-  # Use the streaming chapter extractor to get structure data for a specific chapter
-  def sync_with_streaming_parser(agency, title, chapter, sync_log)
+  # Use the streaming extractor to get structure data for a specific node
+  def sync_with_streaming_parser(agency, title, identifier, type, sync_log)
     date = latest_date_for_title(title)
 
-    extractor = EcfrChapterExtractor.new(date: date, title: title, chapter: chapter)
-    chapter_data = extractor.call
+    extractor = EcfrChapterExtractor.new(date: date, title: title, chapter: identifier, type: type)
+    node_data = extractor.call
 
     Rails.logger.info(
-      "[StreamingSync] Extracted chapter #{chapter} from Title #{title}: " \
-      "#{chapter_data["children"]&.size || 0} top-level children"
+      "[StreamingSync] Extracted #{type} #{identifier} from Title #{title}: " \
+      "#{node_data["children"]&.size || 0} top-level children"
     )
 
-    process_chapter_children(agency, title, chapter_data, sync_log)
+    process_chapter_children(agency, title, node_data, sync_log)
   end
 
   # Fallback: fetch full structure for a title (no chapter filter)

@@ -44,6 +44,9 @@ gem "http", "~> 5.0"
 # XML parsing (already included in Rails, but explicit for clarity)
 gem "nokogiri", "~> 1.16"
 
+# Streaming JSON parser (C extension, SAX-style for memory-efficient parsing of large JSON)
+gem "yajl-ruby", require: "yajl"
+
 # Pagination
 gem "kaminari"
 
